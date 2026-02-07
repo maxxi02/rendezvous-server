@@ -11,9 +11,17 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 
+// Parse CORS_ORIGIN (handles comma-separated list)
+const allowedOrigins = process.env.CORS_ORIGIN?.split(",").map((origin) =>
+  origin.trim(),
+) || ["http://localhost:3000", "https://rendezvouscafe.vercel.app"];
+
+console.log("✅ Allowed CORS origins:", allowedOrigins);
+
+// Socket.IO setup with CORS
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -22,7 +30,7 @@ const io = new Server(httpServer, {
 // Middleware
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+    origin: allowedOrigins,
     credentials: true,
   }),
 );
@@ -30,14 +38,19 @@ app.use(express.json());
 
 // Health check endpoint
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date() });
+  res.json({
+    status: "ok",
+    timestamp: new Date(),
+    allowedOrigins,
+    port: PORT,
+  });
 });
 
 // Socket.IO events
 handleSocketEvents(io);
 
-// Start server
-const PORT = process.env.PORT || 4000;
+// Use Render's PORT or fallback to 8080
+const PORT = process.env.PORT || 8080;
 
 const startServer = async () => {
   try {
@@ -45,7 +58,8 @@ const startServer = async () => {
     await connectDatabase();
 
     httpServer.listen(PORT, () => {
-      console.log(`Socket.IO server running on port ${PORT}`);
+      console.log(`🚀 Socket.IO server running on port ${PORT}`);
+      console.log(`🌍 Allowed origins: ${allowedOrigins.join(", ")}`);
     });
   } catch (error) {
     console.error("Failed to start server:", error);
