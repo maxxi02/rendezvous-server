@@ -1,47 +1,144 @@
+// events/socketEvents.ts
 import { Server, Socket } from "socket.io";
+import mongoose from "mongoose";
+import { UserStatusUpdate } from "../types/userStatus.type";
 
-export const handleSocketEvents = (io: Server) => {
-  io.on("connection", (socket: Socket) => {
-    console.log(`User connected: ${socket.id}`);
+// ─── Helpers ─────────────────────────────────────────────────────
 
-    // Join a room with username
-    socket.on("join-room", (data: { room: string; username: string }) => {
-      socket.join(data.room);
-      console.log(`${data.username} (${socket.id}) joined room ${data.room}`);
+const getUserCollection = () => {
+  if (!mongoose.connection.db) {
+    throw new Error("Database not connected");
+  }
+  return mongoose.connection.db.collection("user");
+};
 
-      // Notify others in the room that a new user joined
-      socket
-        .to(data.room)
-        .emit("user_joined", `${data.username} joined the room`);
+const log = {
+  info: (msg: string, data?: any) =>
+    console.log(`ℹ️  ${msg}`, data ? JSON.stringify(data, null, 2) : ""),
+  success: (msg: string, data?: any) =>
+    console.log(`✅ ${msg}`, data ? JSON.stringify(data, null, 2) : ""),
+  error: (msg: string, data?: any) =>
+    console.error(`❌ ${msg}`, data ? JSON.stringify(data, null, 2) : ""),
+  warn: (msg: string, data?: any) =>
+    console.warn(`⚠️  ${msg}`, data ? JSON.stringify(data, null, 2) : ""),
+};
 
-      // Optionally, send a welcome message to the user who just joined
-      socket.emit("user_joined", `Welcome to room ${data.room}`);
-    });
+// ─── User Service ────────────────────────────────────────────────
 
-    // Handle chat messages
-    socket.on(
-      "message",
-      (data: { room: string; message: string; sender: string }) => {
-        console.log(
-          `Message from ${data.sender} in room ${data.room}: ${data.message}`,
-        );
+const setUserOnline = async (userId: string): Promise<void> => {
+  const userCollection = getUserCollection();
 
-        // Broadcast to everyone in the room EXCEPT the sender
-        socket.to(data.room).emit("message", {
-          sender: data.sender,
-          message: data.message,
-        });
+  await userCollection.updateOne(
+    { id: userId },
+    {
+      $set: {
+        isOnline: true,
+        lastSeen: new Date(),
       },
-    );
+    },
+  );
 
-    // Handle disconnect
-    socket.on("disconnect", () => {
-      console.log(`User disconnected: ${socket.id}`);
-    });
+  log.success(`User online: ${userId}`);
+};
 
-    // Optional: Handle errors
-    socket.on("error", (error) => {
-      console.error(`Socket error for ${socket.id}:`, error);
-    });
+const setUserOffline = async (userId: string): Promise<void> => {
+  const userCollection = getUserCollection();
+
+  await userCollection.updateOne(
+    { id: userId },
+    {
+      $set: {
+        isOnline: false,
+        lastSeen: new Date(),
+      },
+    },
+  );
+
+  log.info(`User offline: ${userId}`);
+};
+
+const updateUserActivity = async (userId: string): Promise<void> => {
+  const userCollection = getUserCollection();
+
+  await userCollection.updateOne(
+    { id: userId },
+    {
+      $set: {
+        lastSeen: new Date(),
+        isOnline: true,
+      },
+    },
+  );
+};
+
+// ─── Event Handlers ──────────────────────────────────────────────
+
+const handleConnection = (io: Server, socket: Socket) => {
+  const userId = socket.handshake.auth.userId as string | undefined;
+
+  if (!userId) {
+    log.warn("Connection rejected: No userId", { socketId: socket.id });
+    socket.disconnect();
+    return;
+  }
+
+  log.success("Client connected", { socketId: socket.id, userId });
+
+  // User comes online
+  socket.on("user:online", async () => {
+    try {
+      await setUserOnline(userId);
+
+      const update: UserStatusUpdate = {
+        userId,
+        isOnline: true,
+        lastSeen: new Date(),
+      };
+
+      io.emit("user:status:changed", update);
+    } catch (error) {
+      log.error("Error in user:online", error);
+      socket.emit("error", { message: "Failed to update online status" });
+    }
   });
+
+  // User activity
+  socket.on("user:activity", async () => {
+    try {
+      await updateUserActivity(userId);
+    } catch (error) {
+      log.error("Error in user:activity", error);
+    }
+  });
+
+  // User disconnects
+  socket.on("disconnect", async (reason) => {
+    try {
+      await setUserOffline(userId);
+
+      const update: UserStatusUpdate = {
+        userId,
+        isOnline: false,
+        lastSeen: new Date(),
+      };
+
+      io.emit("user:status:changed", update);
+
+      log.info("Client disconnected", { userId, reason });
+    } catch (error) {
+      log.error("Error in disconnect", error);
+    }
+  });
+
+  // Handle errors
+  socket.on("error", (error) => {
+    log.error("Socket error", { userId, error });
+  });
+};
+
+// ─── Main Export ─────────────────────────────────────────────────
+
+export const handleSocketEvents = (io: Server): void => {
+  io.on("connection", (socket) => handleConnection(io, socket));
+  log.info("Socket.IO event handlers registered");
 };
