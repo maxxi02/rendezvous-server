@@ -5,7 +5,7 @@ import { Server } from "socket.io";
 import cors from "cors";
 import dotenv from "dotenv";
 import { connectDatabase } from "./config/database";
-import { handleSocketEvents } from "./events/socketEvents";
+import { handleSocketEvents, setSocketIOInstance } from "./events/socketEvents";
 
 dotenv.config();
 
@@ -38,6 +38,9 @@ const io = new Server(httpServer, {
   pingTimeout: 60000,
   pingInterval: 25000,
 });
+
+// Register Socket.IO instance for use in API routes
+setSocketIOInstance(io);
 
 // ─── Routes ──────────────────────────────────────────────────────
 
@@ -95,9 +98,6 @@ const gracefulShutdown = async (signal: string) => {
     console.log("✅ Socket.IO server closed");
   });
 
-  // Close database connection if you have a close function
-  // await closeDatabase();
-
   process.exit(0);
 };
 
@@ -107,3 +107,6 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 // ─── Start ───────────────────────────────────────────────────────
 
 startServer();
+
+// Export io instance for use in other modules if needed
+export { io };
