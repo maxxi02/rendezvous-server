@@ -4,18 +4,14 @@ import { Server } from "socket.io";
 import cors from "cors";
 import dotenv from "dotenv";
 import { connectDatabase } from "./config/database";
-import {
-  handleSocketEvents,
-  setSocketIOInstance,
-} from "./events/socketEvents";
-import { seedAllStaffGroup } from "./events/chatEvents"; // ← add this import
+import { handleSocketEvents, setSocketIOInstance } from "./events/socketEvents";
 
 dotenv.config();
 
 const PORT = process.env.PORT || 8080;
 
 const allowedOrigins = process.env.CORS_ORIGIN?.split(",").map((o) =>
-  o.trim()
+  o.trim(),
 ) || ["http://localhost:3000", "https://rendezvouscafe.vercel.app"];
 
 const corsOptions = {
@@ -59,9 +55,6 @@ const startServer = async () => {
     // 1. Connect DB first
     await connectDatabase();
 
-    // 2. Seed chat data now that DB is ready — guaranteed connection
-    await seedAllStaffGroup();
-
     // 3. Start listening
     httpServer.listen(PORT, () => {
       console.log("━".repeat(50));
@@ -85,7 +78,7 @@ const gracefulShutdown = async (signal: string) => {
 };
 
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-process.on("SIGINT",  () => gracefulShutdown("SIGINT"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 startServer();
 
