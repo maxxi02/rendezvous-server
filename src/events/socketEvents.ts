@@ -2,6 +2,7 @@
 import { Server, Socket } from "socket.io";
 import mongoose from "mongoose";
 import { UserStatusUpdate } from "../types/userStatus.type";
+import { handleChatEvents, seedAllStaffGroup } from "./chatEvents";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -135,46 +136,51 @@ const handleConnection = (io: Server, socket: Socket) => {
   // ─── Attendance Event Triggers (from API routes) ────────────────
 
   // Handle attendance approval trigger from API routes
-  socket.on("attendance:approved:trigger", (data: {
-    userId: string;
-    attendanceId: string;
-    status: string;
-    totalHours?: number;
-    approvedBy: string;
-  }) => {
-    try {
-      emitAttendanceApproved(io, data);
-    } catch (error) {
-      log.error("Error in attendance:approved:trigger", error);
-    }
-  });
+  socket.on(
+    "attendance:approved:trigger",
+    (data: {
+      userId: string;
+      attendanceId: string;
+      status: string;
+      totalHours?: number;
+      approvedBy: string;
+    }) => {
+      try {
+        emitAttendanceApproved(io, data);
+      } catch (error) {
+        log.error("Error in attendance:approved:trigger", error);
+      }
+    },
+  );
 
   // Handle attendance rejection trigger from API routes
-  socket.on("attendance:rejected:trigger", (data: {
-    userId: string;
-    attendanceId: string;
-    rejectionReason: string;
-    rejectedBy: string;
-  }) => {
-    try {
-      emitAttendanceRejected(io, data);
-    } catch (error) {
-      log.error("Error in attendance:rejected:trigger", error);
-    }
-  });
+  socket.on(
+    "attendance:rejected:trigger",
+    (data: {
+      userId: string;
+      attendanceId: string;
+      rejectionReason: string;
+      rejectedBy: string;
+    }) => {
+      try {
+        emitAttendanceRejected(io, data);
+      } catch (error) {
+        log.error("Error in attendance:rejected:trigger", error);
+      }
+    },
+  );
 
   // Handle attendance status change trigger from API routes
-  socket.on("attendance:status:changed:trigger", (data: {
-    userId: string;
-    attendanceId: string;
-    status: string;
-  }) => {
-    try {
-      emitAttendanceStatusChange(io, data);
-    } catch (error) {
-      log.error("Error in attendance:status:changed:trigger", error);
-    }
-  });
+  socket.on(
+    "attendance:status:changed:trigger",
+    (data: { userId: string; attendanceId: string; status: string }) => {
+      try {
+        emitAttendanceStatusChange(io, data);
+      } catch (error) {
+        log.error("Error in attendance:status:changed:trigger", error);
+      }
+    },
+  );
 
   // User disconnects
   socket.on("disconnect", async (reason) => {
@@ -211,10 +217,10 @@ export const emitAttendanceApproved = (
     status: string;
     totalHours?: number;
     approvedBy: string;
-  }
+  },
 ) => {
   const userRoom = getUserRoom(data.userId);
-  
+
   const payload: AttendanceUpdate = {
     attendanceId: data.attendanceId,
     userId: data.userId,
@@ -224,8 +230,11 @@ export const emitAttendanceApproved = (
   };
 
   io.to(userRoom).emit("attendance:approved", payload);
-  
-  log.success(`Attendance approved notification sent to ${data.userId}`, payload);
+
+  log.success(
+    `Attendance approved notification sent to ${data.userId}`,
+    payload,
+  );
 };
 
 export const emitAttendanceRejected = (
@@ -235,10 +244,10 @@ export const emitAttendanceRejected = (
     attendanceId: string;
     rejectionReason: string;
     rejectedBy: string;
-  }
+  },
 ) => {
   const userRoom = getUserRoom(data.userId);
-  
+
   const payload: AttendanceUpdate = {
     attendanceId: data.attendanceId,
     userId: data.userId,
@@ -248,8 +257,11 @@ export const emitAttendanceRejected = (
   };
 
   io.to(userRoom).emit("attendance:rejected", payload);
-  
-  log.success(`Attendance rejected notification sent to ${data.userId}`, payload);
+
+  log.success(
+    `Attendance rejected notification sent to ${data.userId}`,
+    payload,
+  );
 };
 
 export const emitAttendanceStatusChange = (
@@ -258,10 +270,10 @@ export const emitAttendanceStatusChange = (
     userId: string;
     attendanceId: string;
     status: string;
-  }
+  },
 ) => {
   const userRoom = getUserRoom(data.userId);
-  
+
   const payload: AttendanceUpdate = {
     attendanceId: data.attendanceId,
     userId: data.userId,
@@ -269,14 +281,19 @@ export const emitAttendanceStatusChange = (
   };
 
   io.to(userRoom).emit("attendance:status:changed", payload);
-  
+
   log.info(`Attendance status change sent to ${data.userId}`, payload);
 };
 
 // ─── Main Export ─────────────────────────────────────────────────
 
 export const handleSocketEvents = (io: Server): void => {
-  io.on("connection", (socket) => handleConnection(io, socket));
+  seedAllStaffGroup().catch(console.error);
+  io.on("connection", (socket) => {
+    handleConnection(io, socket);
+    handleChatEvents(io, socket); // ← ADD THIS LINE
+  });
+
   log.info("Socket.IO event handlers registered");
 };
 
