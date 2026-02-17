@@ -2,7 +2,7 @@
 import { Server, Socket } from "socket.io";
 import mongoose from "mongoose";
 import { UserStatusUpdate } from "../types/userStatus.type";
-import { handleChatEvents, seedAllStaffGroup } from "./chatEvents";
+import { handleChatEvents } from "./chatEvents";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -288,7 +288,6 @@ export const emitAttendanceStatusChange = (
 // ─── Main Export ─────────────────────────────────────────────────
 
 export const handleSocketEvents = (io: Server): void => {
-  seedAllStaffGroup().catch(console.error);
   io.on("connection", (socket) => {
     handleConnection(io, socket);
     handleChatEvents(io, socket); // ← ADD THIS LINE

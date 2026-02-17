@@ -1,20 +1,21 @@
-// server.ts
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import dotenv from "dotenv";
 import { connectDatabase } from "./config/database";
-import { handleSocketEvents, setSocketIOInstance } from "./events/socketEvents";
+import {
+  handleSocketEvents,
+  setSocketIOInstance,
+} from "./events/socketEvents";
+import { seedAllStaffGroup } from "./events/chatEvents"; // ← add this import
 
 dotenv.config();
 
-// ─── Configuration ───────────────────────────────────────────────
-
 const PORT = process.env.PORT || 8080;
 
-const allowedOrigins = process.env.CORS_ORIGIN?.split(",").map((origin) =>
-  origin.trim(),
+const allowedOrigins = process.env.CORS_ORIGIN?.split(",").map((o) =>
+  o.trim()
 ) || ["http://localhost:3000", "https://rendezvouscafe.vercel.app"];
 
 const corsOptions = {
@@ -23,15 +24,11 @@ const corsOptions = {
   credentials: true,
 };
 
-// ─── Express Setup ───────────────────────────────────────────────
-
 const app = express();
 const httpServer = createServer(app);
 
 app.use(cors(corsOptions));
 app.use(express.json());
-
-// ─── Socket.IO Setup ─────────────────────────────────────────────
 
 const io = new Server(httpServer, {
   cors: corsOptions,
@@ -39,10 +36,7 @@ const io = new Server(httpServer, {
   pingInterval: 25000,
 });
 
-// Register Socket.IO instance for use in API routes
 setSocketIOInstance(io);
-
-// ─── Routes ──────────────────────────────────────────────────────
 
 app.get("/health", (req, res) => {
   res.json({
@@ -55,28 +49,26 @@ app.get("/health", (req, res) => {
 });
 
 app.get("/", (req, res) => {
-  res.json({
-    message: "Socket.IO Server Running",
-    version: "1.0.0",
-  });
+  res.json({ message: "Socket.IO Server Running", version: "1.0.0" });
 });
-
-// ─── Socket Events ───────────────────────────────────────────────
 
 handleSocketEvents(io);
 
-// ─── Server Startup ──────────────────────────────────────────────
-
 const startServer = async () => {
   try {
+    // 1. Connect DB first
     await connectDatabase();
 
+    // 2. Seed chat data now that DB is ready — guaranteed connection
+    await seedAllStaffGroup();
+
+    // 3. Start listening
     httpServer.listen(PORT, () => {
       console.log("━".repeat(50));
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
+      console.log(`🌍 Environment: ${process.env.NODE_ENV || "dev"}`);
       console.log(`🔗 Allowed origins:`);
-      allowedOrigins.forEach((origin) => console.log(`   • ${origin}`));
+      allowedOrigins.forEach((o) => console.log(`   • ${o}`));
       console.log("━".repeat(50));
     });
   } catch (error) {
@@ -85,28 +77,16 @@ const startServer = async () => {
   }
 };
 
-// ─── Graceful Shutdown ───────────────────────────────────────────
-
 const gracefulShutdown = async (signal: string) => {
   console.log(`\n📡 ${signal} received, shutting down gracefully...`);
-
-  httpServer.close(() => {
-    console.log("✅ HTTP server closed");
-  });
-
-  io.close(() => {
-    console.log("✅ Socket.IO server closed");
-  });
-
+  httpServer.close(() => console.log("✅ HTTP server closed"));
+  io.close(() => console.log("✅ Socket.IO server closed"));
   process.exit(0);
 };
 
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-
-// ─── Start ───────────────────────────────────────────────────────
+process.on("SIGINT",  () => gracefulShutdown("SIGINT"));
 
 startServer();
 
-// Export io instance for use in other modules if needed
 export { io };
