@@ -297,10 +297,14 @@ const handleChatConversationsLoad = async (io: Server, socket: Socket) => {
 
 const handleChatDirectGetOrCreate = async (
   socket: Socket,
-  data: { otherUserId: string },
+  data: {
+    targetUserId: string;
+    targetUserName: string;
+    targetUserAvatar?: string;
+  },
 ) => {
   const userId = socket.data.userId;
-  const { otherUserId } = data;
+  const { targetUserId, targetUserName, targetUserAvatar } = data;
 
   try {
     // Check if conversation already exists
@@ -309,7 +313,7 @@ const handleChatDirectGetOrCreate = async (
       participants: {
         $all: [
           { $elemMatch: { userId } },
-          { $elemMatch: { userId: otherUserId } },
+          { $elemMatch: { userId: targetUserId } },
         ],
       },
     });
@@ -317,7 +321,7 @@ const handleChatDirectGetOrCreate = async (
     if (!conversation) {
       // Get user details for both participants
       const users = await getUserCollection()
-        .find({ id: { $in: [userId, otherUserId] } })
+        .find({ id: { $in: [userId, targetUserId] } })
         .toArray();
 
       const userMap = new Map(users.map((u) => [u.id, u]));
@@ -325,15 +329,19 @@ const handleChatDirectGetOrCreate = async (
       const participants = [
         {
           userId,
-          name: userMap.get(userId)?.name || "Unknown",
-          avatar: userMap.get(userId)?.avatar || null,
-          role: userMap.get(userId)?.role || "employee",
+          userName: userMap.get(userId)?.name || "Unknown",
+          userAvatar: userMap.get(userId)?.image || "",
+          role: "member" as const,
+          joinedAt: new Date(),
+          lastReadAt: new Date(),
         },
         {
-          userId: otherUserId,
-          name: userMap.get(otherUserId)?.name || "Unknown",
-          avatar: userMap.get(otherUserId)?.avatar || null,
-          role: userMap.get(otherUserId)?.role || "employee",
+          userId: targetUserId,
+          userName: targetUserName, // use what client sent directly
+          userAvatar: targetUserAvatar || "", // use what client sent directly
+          role: "member" as const,
+          joinedAt: new Date(),
+          lastReadAt: new Date(),
         },
       ];
 
@@ -345,7 +353,7 @@ const handleChatDirectGetOrCreate = async (
         participants,
         unreadCounts: {
           [userId]: 0,
-          [otherUserId]: 0,
+          [targetUserId]: 0,
         },
         createdAt: now,
         updatedAt: now,
@@ -365,15 +373,13 @@ const handleChatDirectGetOrCreate = async (
       socket.join(conversation._id.toString());
 
       socket.emit("chat:direct:created", {
-        conversation: {
-          ...conversation,
-          _id: conversation._id.toString(),
-        },
+        ...conversation,
+        _id: conversation._id.toString(),
       });
 
       log.info(`Direct conversation created/retrieved`, {
         userId,
-        otherUserId,
+        targetUserId,
       });
     }
   } catch (error) {
