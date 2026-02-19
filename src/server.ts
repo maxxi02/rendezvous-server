@@ -5,6 +5,8 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { connectDatabase } from "./config/database";
 import { handleSocketEvents, setSocketIOInstance } from "./events/socketEvents";
+import { setMessagingDb } from "./lib/messaging.socket";
+import mongoose from "mongoose";
 
 dotenv.config();
 
@@ -54,6 +56,8 @@ const startServer = async () => {
   try {
     // 1. Connect DB first
     await connectDatabase();
+
+    setMessagingDb(mongoose.connection.db!);
 
     // 3. Start listening
     httpServer.listen(PORT, () => {
