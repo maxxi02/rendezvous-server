@@ -14,7 +14,12 @@ const PORT = process.env.PORT || 8080;
 
 const allowedOrigins = process.env.CORS_ORIGIN?.split(",").map((o) =>
   o.trim(),
-) || ["http://localhost:3000", "https://rendezvouscafe.vercel.app"];
+) || [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "https://rendezvouscafe.vercel.app",
+  "https://rendezvous-cafe.vercel.app",
+];
 
 const corsOptions = {
   origin: allowedOrigins,

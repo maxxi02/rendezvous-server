@@ -2,6 +2,8 @@ import { Server, Socket } from "socket.io";
 import mongoose from "mongoose";
 import { UserStatusUpdate } from "../types/userStatus.type";
 import { registerMessagingHandlers } from "../lib/messaging.socket";
+import { emitCustomerOrder } from "../lib/order.socket";
+import { CustomerOrder } from "../types/order.type";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -186,6 +188,19 @@ const handleConnection = (io: Server, socket: Socket) => {
       }
     },
   );
+
+  socket.on("order:new:trigger", (order: CustomerOrder) => {
+    try {
+      emitCustomerOrder(io, order);
+    } catch (error) {
+      log.error("Error in order:new:trigger", error);
+    }
+  });
+
+  socket.on("pos:join", () => {
+    socket.join("pos:cashiers");
+    log.info(`POS cashier joined room: pos:cashiers`, { socketId: socket.id });
+  });
 
   // User disconnects
   socket.on("disconnect", async (reason) => {
