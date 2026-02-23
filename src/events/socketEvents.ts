@@ -17,6 +17,42 @@ interface AttendanceUpdate {
   rejectionReason?: string;
 }
 
+interface PrintJob {
+  jobId: string;
+  target: "receipt" | "kitchen" | "both";
+  input: ReceiptBuildInput;
+}
+
+interface ReceiptBuildInput {
+  orderNumber: string;
+  customerName: string;
+  cashier: string;
+  timestamp: Date;
+  orderType: "dine-in" | "takeaway";
+  tableNumber?: string;
+  orderNote?: string;
+  items: Array<{
+    name: string;
+    price: number;
+    quantity: number;
+    hasDiscount?: boolean;
+  }>;
+  subtotal: number;
+  discountTotal: number;
+  total: number;
+  paymentMethod: "cash" | "gcash" | "split";
+  splitPayment?: { cash: number; gcash: number };
+  amountPaid?: number;
+  change?: number;
+  seniorPwdCount?: number;
+  seniorPwdIds?: string[];
+  isReprint?: boolean;
+  businessName: string;
+  businessAddress?: string;
+  businessPhone?: string;
+  receiptMessage?: string;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────
 
 const getUserCollection = () => {
@@ -142,6 +178,62 @@ const handleConnection = (io: Server, socket: Socket) => {
       log.error("Error in user:activity", error);
     }
   });
+
+  socket.on("print:request", (job: PrintJob) => {
+    try {
+      log.info(`Print request received: ${job.jobId} → ${job.target}`);
+
+      // Relay to pos:cashiers room — the cashier's browser will handle actual printing
+      io.to("pos:cashiers").emit("print:job", job);
+
+      log.success(`Print job relayed to pos:cashiers: ${job.jobId}`);
+    } catch (error) {
+      log.error("Error in print:request", error);
+      socket.emit("print:error", {
+        jobId: job.jobId,
+        error: "Failed to relay print job",
+      });
+    }
+  });
+
+  socket.on(
+    "print:job:result",
+    (result: {
+      jobId: string;
+      success: boolean;
+      receipt?: boolean;
+      kitchen?: boolean;
+      error?: string;
+    }) => {
+      log.info(`Print job result: ${result.jobId}`, result);
+
+      // Optionally log to DB here
+      // You could save print logs to MongoDB if needed
+    },
+  );
+
+  socket.on(
+    "print:raw:request",
+    (data: { target: "usb" | "bluetooth"; bytes: number[]; jobId: string }) => {
+      try {
+        io.to("pos:cashiers").emit("print:raw", data);
+        log.info(
+          `Raw print bytes relayed: ${data.jobId} → ${data.target} (${data.bytes.length} bytes)`,
+        );
+      } catch (error) {
+        log.error("Error relaying raw print", error);
+      }
+    },
+  );
+
+  socket.on(
+    "print:raw:result",
+    (result: { jobId: string; success: boolean }) => {
+      log.info(
+        `Raw print result: ${result.jobId} → ${result.success ? "✅" : "❌"}`,
+      );
+    },
+  );
 
   // ─── Attendance Event Triggers (from API routes) ────────────────
 
