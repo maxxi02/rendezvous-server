@@ -4,6 +4,7 @@ import { UserStatusUpdate } from "../types/userStatus.type";
 import { registerMessagingHandlers } from "../lib/messaging.socket";
 import { emitCustomerOrder } from "../lib/order.socket";
 import { CustomerOrder } from "../types/order.type";
+import { registerInventoryHandlers } from "./inventoryEvents";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -144,6 +145,7 @@ const handleConnection = (io: Server, socket: Socket) => {
   socket.data.userAvatar = userAvatar;
 
   registerMessagingHandlers(io, socket);
+  registerInventoryHandlers(io, socket);
 
   log.success("Client connected", { socketId: socket.id, userId });
 
