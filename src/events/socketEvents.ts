@@ -321,6 +321,13 @@ const handleConnection = (io: Server, socket: Socket) => {
   });
 };
 
+// ─── Sales Analytics ─────────────────────────────────────────────
+
+export const emitSalesUpdated = (io: Server) => {
+  io.emit("sales:updated", { timestamp: new Date() });
+  log.info("sales:updated emitted to all clients");
+};
+
 // ─── Attendance Notification Helpers ─────────────────────────────
 
 export const emitAttendanceApproved = (
@@ -399,6 +406,20 @@ export const emitAttendanceStatusChange = (
   log.info(`Attendance status change sent to ${data.userId}`, payload);
 };
 
+const notifySalesUpdate = async () => {
+  try {
+    await fetch(`${process.env.SOCKET_SERVER_URL}/internal/sales-updated`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-secret": process.env.INTERNAL_SECRET || "",
+      },
+    });
+  } catch (err) {
+    // Non-critical — don't fail the payment if this errors
+    console.warn("Could not notify socket server:", err);
+  }
+};
 // ─── Main Export ─────────────────────────────────────────────────
 
 export const handleSocketEvents = (io: Server): void => {

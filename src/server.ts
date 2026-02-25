@@ -7,6 +7,7 @@ import { connectDatabase } from "./config/database";
 import { handleSocketEvents, setSocketIOInstance } from "./events/socketEvents";
 import { setMessagingDb } from "./lib/messaging.socket";
 import mongoose from "mongoose";
+import { emitSalesUpdated } from "./events/socketEvents";
 
 dotenv.config();
 
@@ -32,6 +33,21 @@ const httpServer = createServer(app);
 
 app.use(cors(corsOptions));
 app.use(express.json());
+
+app.post("/internal/sales-updated", (req, res) => {
+  try {
+    // Optional: protect with a shared secret
+    const secret = req.headers["x-internal-secret"];
+    if (process.env.INTERNAL_SECRET && secret !== process.env.INTERNAL_SECRET) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    emitSalesUpdated(io);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to emit" });
+  }
+});
 
 const io = new Server(httpServer, {
   cors: corsOptions,
