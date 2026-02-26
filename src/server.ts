@@ -7,22 +7,41 @@ import { connectDatabase } from "./config/database";
 import { handleSocketEvents, setSocketIOInstance } from "./events/socketEvents";
 import { setMessagingDb } from "./lib/messaging.socket";
 import mongoose from "mongoose";
-import { emitSalesUpdated, emitCashUpdated, emitRegisterClosed } from "./events/socketEvents";
+import {
+  emitSalesUpdated,
+  emitCashUpdated,
+  emitRegisterClosed,
+} from "./events/socketEvents";
 
 dotenv.config();
 
 const PORT = process.env.PORT || 8080;
 
-const allowedOrigins = process.env.CORS_ORIGIN?.split(",").map((o) =>
-  o.trim(),
-) || [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "https://rendezvouscafe.vercel.app",
-  "https://rendezvous-cafe.vercel.app",
-  "http://localhost:8000",
-  "http://localhost:8001",
-];
+const getOrigins = () => {
+  const envOrigins = (
+    process.env.CORS_ORIGIN ||
+    process.env.ALLOWED_ORIGINS ||
+    ""
+  )
+    .split(",")
+    .map((o) => o.trim())
+    .filter((o) => o.length > 0);
+
+  const defaultOrigins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://rendezvouscafe.vercel.app",
+    "https://rendezvous-cafe.vercel.app",
+    "http://localhost:8000",
+    "http://localhost:8001",
+    "http://192.168.1.5:8080",
+    "http://192.168.1.5:8081",
+  ];
+
+  return Array.from(new Set([...envOrigins, ...defaultOrigins]));
+};
+
+const allowedOrigins = getOrigins();
 
 const corsOptions = {
   origin: allowedOrigins,
@@ -84,18 +103,14 @@ const io = new Server(httpServer, {
       // Allow requests with no origin (mobile apps, curl, server-to-server)
       if (!origin) return callback(null, true);
 
-      const allowed = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000')
-        .split(',')
-        .map(o => o.trim());
-
-      if (allowed.includes(origin)) {
+      if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         console.warn(`[CORS] Blocked origin: ${origin}`);
         callback(new Error(`Origin ${origin} not allowed`));
       }
     },
-    methods: ['GET', 'POST'],
+    methods: ["GET", "POST"],
     credentials: true,
   },
 });

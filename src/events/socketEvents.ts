@@ -37,6 +37,7 @@ interface ReceiptBuildInput {
     price: number;
     quantity: number;
     hasDiscount?: boolean;
+    menuType?: "food" | "drink";
   }>;
   subtotal: number;
   discountTotal: number;
@@ -439,7 +440,7 @@ export const emitCashUpdated = (io: Server) => {
 
 export const emitRegisterClosed = (
   io: Server,
-  data: { cashierName: string; registerName: string; closedAt: string }
+  data: { cashierName: string; registerName: string; closedAt: string },
 ) => {
   io.emit("register:closed", { ...data, timestamp: new Date() });
   log.info("register:closed emitted", data);
