@@ -7,7 +7,7 @@ import { connectDatabase } from "./config/database";
 import { handleSocketEvents, setSocketIOInstance } from "./events/socketEvents";
 import { setMessagingDb } from "./lib/messaging.socket";
 import mongoose from "mongoose";
-import { emitSalesUpdated } from "./events/socketEvents";
+import { emitSalesUpdated, emitCashUpdated, emitRegisterClosed } from "./events/socketEvents";
 
 dotenv.config();
 
@@ -51,10 +51,53 @@ app.post("/internal/sales-updated", (req, res) => {
   }
 });
 
+app.post("/internal/cash-updated", (req, res) => {
+  try {
+    const secret = req.headers["x-internal-secret"];
+    if (process.env.INTERNAL_SECRET && secret !== process.env.INTERNAL_SECRET) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    emitCashUpdated(io);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to emit" });
+  }
+});
+
+app.post("/internal/register-closed", (req, res) => {
+  try {
+    const secret = req.headers["x-internal-secret"];
+    if (process.env.INTERNAL_SECRET && secret !== process.env.INTERNAL_SECRET) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const { cashierName, registerName, closedAt } = req.body;
+    emitRegisterClosed(io, { cashierName, registerName, closedAt });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to emit" });
+  }
+});
+
 const io = new Server(httpServer, {
-  cors: corsOptions,
-  pingTimeout: 60000,
-  pingInterval: 25000,
+  cors: {
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, server-to-server)
+      if (!origin) return callback(null, true);
+
+      const allowed = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000')
+        .split(',')
+        .map(o => o.trim());
+
+      if (allowed.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn(`[CORS] Blocked origin: ${origin}`);
+        callback(new Error(`Origin ${origin} not allowed`));
+      }
+    },
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
 });
 
 setSocketIOInstance(io);

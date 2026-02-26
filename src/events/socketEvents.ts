@@ -429,6 +429,22 @@ const notifySalesUpdate = async () => {
     console.warn("Could not notify socket server:", err);
   }
 };
+
+// ─── Cash Management ─────────────────────────────────────────────
+
+export const emitCashUpdated = (io: Server) => {
+  io.emit("cash:updated", { timestamp: new Date() });
+  log.info("cash:updated emitted to all clients");
+};
+
+export const emitRegisterClosed = (
+  io: Server,
+  data: { cashierName: string; registerName: string; closedAt: string }
+) => {
+  io.emit("register:closed", { ...data, timestamp: new Date() });
+  log.info("register:closed emitted", data);
+};
+
 // ─── Main Export ─────────────────────────────────────────────────
 
 export const handleSocketEvents = (io: Server): void => {
