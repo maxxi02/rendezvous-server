@@ -181,6 +181,15 @@ const handleConnection = (io: Server, socket: Socket) => {
     }
   });
 
+  socket.on(
+    "companion:printer:status",
+    (status: { usb: boolean; bt: boolean }) => {
+      // Relay to all POS cashier tabs so the status bar updates immediately
+      io.to("pos:cashiers").emit("companion:printer:status", status);
+      log.info("Printer status relayed to pos:cashiers", status);
+    },
+  );
+
   socket.on("print:request", (job: PrintJob) => {
     try {
       log.info(`Print request received: ${job.jobId} → ${job.target}`);

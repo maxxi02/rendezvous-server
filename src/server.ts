@@ -20,6 +20,8 @@ const allowedOrigins = process.env.CORS_ORIGIN?.split(",").map((o) =>
   "http://localhost:3001",
   "https://rendezvouscafe.vercel.app",
   "https://rendezvous-cafe.vercel.app",
+  "http://localhost:8000",
+  "http://localhost:8001",
 ];
 
 const corsOptions = {
