@@ -34,8 +34,10 @@ const getOrigins = () => {
     "https://rendezvous-cafe.vercel.app",
     "http://localhost:8000",
     "http://localhost:8001",
-    "http://192.168.1.5:8080",
-    "http://192.168.1.5:8081",
+    "http://192.168.1.56:8080",
+    "http://192.168.1.56:8081",
+    "http://192.168.1.56:3000",
+    "http://192.168.1.56:3001",
   ];
 
   return Array.from(new Set([...envOrigins, ...defaultOrigins]));
