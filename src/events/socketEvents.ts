@@ -2,9 +2,11 @@ import { Server, Socket } from "socket.io";
 import mongoose from "mongoose";
 import { UserStatusUpdate } from "../types/userStatus.type";
 import { registerMessagingHandlers } from "../lib/messaging.socket";
-import { emitCustomerOrder } from "../lib/order.socket";
+import { emitCustomerOrder, registerOrderHandlers } from "../lib/order.socket";
 import { CustomerOrder } from "../types/order.type";
 import { registerInventoryHandlers } from "./inventoryEvents";
+import { registerTableHandlers } from "./tableEvents";
+import { registerChatHandlers } from "./chatEvents";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -134,34 +136,39 @@ const handleConnection = (io: Server, socket: Socket) => {
   const userName = socket.handshake.auth.userName as string | undefined;
   const userAvatar = socket.handshake.auth.userAvatar as string | undefined;
 
-  if (!userId) {
-    log.warn("Connection rejected: No userId", { socketId: socket.id });
-    socket.disconnect();
-    return;
-  }
+  // Allow anonymous connections for customer portal guests
+  const effectiveUserId = userId || `guest:${socket.id}`;
 
   // Store user data in socket for later use
-  socket.data.userId = userId;
-  socket.data.userName = userName;
+  socket.data.userId = effectiveUserId;
+  socket.data.userName = userName || "Guest";
   socket.data.userAvatar = userAvatar;
+
+  if (userId) {
+    // Authenticated user — join their personal room
+    const userRoom = getUserRoom(userId);
+    socket.join(userRoom);
+    log.info(`User joined room: ${userRoom}`);
+  }
 
   registerMessagingHandlers(io, socket);
   registerInventoryHandlers(io, socket);
+  registerTableHandlers(io, socket);
+  registerChatHandlers(io, socket);
+  registerOrderHandlers(io, socket);
 
-  log.success("Client connected", { socketId: socket.id, userId });
-
-  // Join user's personal room for targeted notifications
-  const userRoom = getUserRoom(userId);
-  socket.join(userRoom);
-  log.info(`User joined room: ${userRoom}`);
+  log.success("Client connected", {
+    socketId: socket.id,
+    userId: effectiveUserId,
+  });
 
   // User comes online
   socket.on("user:online", async () => {
     try {
-      await setUserOnline(userId);
+      if (userId) await setUserOnline(userId);
 
       const update: UserStatusUpdate = {
-        userId,
+        userId: effectiveUserId,
         isOnline: true,
         lastSeen: new Date(),
       };
@@ -176,7 +183,7 @@ const handleConnection = (io: Server, socket: Socket) => {
   // User activity
   socket.on("user:activity", async () => {
     try {
-      await updateUserActivity(userId);
+      if (userId) await updateUserActivity(userId);
     } catch (error) {
       log.error("Error in user:activity", error);
     }
@@ -309,17 +316,17 @@ const handleConnection = (io: Server, socket: Socket) => {
   // User disconnects
   socket.on("disconnect", async (reason) => {
     try {
-      await setUserOffline(userId);
+      if (userId) await setUserOffline(userId);
 
       const update: UserStatusUpdate = {
-        userId,
+        userId: effectiveUserId,
         isOnline: false,
         lastSeen: new Date(),
       };
 
       io.emit("user:status:changed", update);
 
-      log.info("Client disconnected", { userId, reason });
+      log.info("Client disconnected", { userId: effectiveUserId, reason });
     } catch (error) {
       log.error("Error in disconnect", error);
     }
