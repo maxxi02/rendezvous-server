@@ -72,6 +72,28 @@ app.post("/internal/sales-updated", (req, res) => {
   }
 });
 
+app.post("/internal/order-status-changed", (req, res) => {
+  try {
+    const secret = req.headers["x-internal-secret"];
+    if (process.env.INTERNAL_SECRET && secret !== process.env.INTERNAL_SECRET) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const { orderId, orderNumber, queueStatus, sessionId } = req.body;
+
+    if (sessionId) {
+      const sessionRoom = `session:${sessionId}`;
+      io.to(sessionRoom).emit("order:status:changed", {
+        orderId,
+        orderNumber,
+        queueStatus,
+      });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to emit order status" });
+  }
+});
+
 app.post("/internal/cash-updated", (req, res) => {
   try {
     const secret = req.headers["x-internal-secret"];
