@@ -19,6 +19,7 @@ const log = {
 const statusTimestampMap: Record<string, string> = {
   paid: "paidAt",
   preparing: "preparingAt",
+  serving: "servingAt",
   ready: "readyAt",
   served: "servedAt",
   completed: "completedAt",
@@ -67,6 +68,7 @@ export function registerOrderHandlers(io: Server, socket: Socket): void {
         orderNumber,
         queueStatus: "pending_payment",
         paymentStatus: "pending",
+        createdAt: new Date(),
       });
 
       // Automatically set table to occupied if there's a table associated
@@ -90,8 +92,17 @@ export function registerOrderHandlers(io: Server, socket: Socket): void {
         }
       }
 
-      // Emit to POS
-      io.to("pos:cashiers").emit("order:new", savedOrder.toObject());
+      const orderObj = savedOrder.toObject();
+
+      // Emit order:new (legacy - for toast notifications)
+      io.to("pos:cashiers").emit("order:new", orderObj);
+
+      // ALSO emit order:queue:updated so QueueBoard adds it directly
+      io.to("pos:cashiers").emit("order:queue:updated", {
+        orderId: orderObj.orderId,
+        queueStatus: "pending_payment",
+        order: orderObj,
+      });
 
       // Confirm to customer
       const sessionRoom = `session:${order.sessionId}`;
@@ -225,6 +236,7 @@ export function registerOrderHandlers(io: Server, socket: Socket): void {
       const statuses = data?.statuses || [
         "paid",
         "preparing",
+        "serving",
         "ready",
         "served",
       ];
