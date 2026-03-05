@@ -62,24 +62,15 @@ const orderSchema = new mongoose.Schema(
     // Queue
     queueStatus: {
       type: String,
-      enum: [
-        "pending_payment",
-        "paid",
-        "preparing",
-        "ready",
-        "served",
-        "completed",
-        "cancelled",
-      ],
+      enum: ["pending_payment", "queueing", "serving", "done", "cancelled"],
       default: "pending_payment",
     },
 
     // Timestamps
     paidAt: Date,
-    preparingAt: Date,
-    readyAt: Date,
-    servedAt: Date,
-    completedAt: Date,
+    queueingAt: Date,
+    servingAt: Date,
+    doneAt: Date,
     cancelledAt: Date,
   },
   {

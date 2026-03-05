@@ -17,12 +17,9 @@ const log = {
 
 // Timestamp field mapping for each queue status
 const statusTimestampMap: Record<string, string> = {
-  paid: "paidAt",
-  preparing: "preparingAt",
+  queueing: "queueingAt",
   serving: "servingAt",
-  ready: "readyAt",
-  served: "servedAt",
-  completed: "completedAt",
+  done: "doneAt",
   cancelled: "cancelledAt",
 };
 
@@ -104,7 +101,7 @@ export function registerOrderHandlers(io: Server, socket: Socket): void {
         order: orderObj,
       });
 
-      // Confirm to customer
+      // Confirm to customer — they are now redirected to the GCash payment page
       const sessionRoom = `session:${order.sessionId}`;
       io.to(sessionRoom).emit("order:submitted", {
         orderId: savedOrder.orderId,
@@ -178,7 +175,9 @@ export function registerOrderHandlers(io: Server, socket: Socket): void {
     }
   });
 
-  // ─── Confirm payment (from webhook or manual) ───────────────────
+  // ─── Confirm payment (from PayMongo webhook via HTTP) ──────────────
+  // This is also exposed as: POST /internal/payment-confirmed
+  // (see src/routes/payment.routes.ts)
   socket.on(
     "order:payment:confirmed",
     async (data: { orderId: string; paymentReference: string }) => {
@@ -189,38 +188,37 @@ export function registerOrderHandlers(io: Server, socket: Socket): void {
             $set: {
               paymentStatus: "paid",
               paymentReference: data.paymentReference,
-              queueStatus: "paid",
+              queueStatus: "queueing",
               paidAt: new Date(),
+              queueingAt: new Date(),
             },
           },
           { new: true },
         );
 
         if (!order) {
-          socket.emit("order:payment:error", {
-            message: "Order not found",
-          });
+          socket.emit("order:payment:error", { message: "Order not found" });
           return;
         }
 
-        // Notify POS
+        // Notify POS — order shows up in the queue
         io.to("pos:cashiers").emit("order:queue:updated", {
           orderId: data.orderId,
-          queueStatus: "paid",
+          queueStatus: "queueing",
           order: order.toObject(),
         });
 
-        // Notify customer
+        // Notify customer — redirect them to the waiting/tracking page
         if (order.sessionId) {
           const sessionRoom = `session:${order.sessionId}`;
           io.to(sessionRoom).emit("order:payment:success", {
             orderId: data.orderId,
             orderNumber: order.orderNumber,
-            queueStatus: "paid",
+            queueStatus: "queueing",
           });
         }
 
-        log.success(`Payment confirmed: ${data.orderId}`);
+        log.success(`Payment confirmed: ${data.orderId} → queueing`);
       } catch (error) {
         log.error("Error confirming payment", error);
         socket.emit("order:payment:error", {
@@ -233,13 +231,7 @@ export function registerOrderHandlers(io: Server, socket: Socket): void {
   // ─── Fetch queue orders (for POS board) ─────────────────────────
   socket.on("order:queue:list", async (data?: { statuses?: QueueStatus[] }) => {
     try {
-      const statuses = data?.statuses || [
-        "paid",
-        "preparing",
-        "serving",
-        "ready",
-        "served",
-      ];
+      const statuses = data?.statuses || ["queueing", "serving"];
 
       const orders = await Order.find({
         queueStatus: { $in: statuses },

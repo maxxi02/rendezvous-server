@@ -216,6 +216,26 @@ const handleConnection = (io: Server, socket: Socket) => {
   });
 
   socket.on(
+    "print:qr",
+    (data: { url: string; label: string; jobId: string }) => {
+      try {
+        log.info(`QR print request received: ${data.jobId} for ${data.label}`);
+
+        // Relay to pos:cashiers room where the companion app is joined
+        io.to("pos:cashiers").emit("print:qr", data);
+
+        log.success(`QR print request relayed to pos:cashiers: ${data.jobId}`);
+      } catch (error) {
+        log.error("Error in print:qr", error);
+        socket.emit("print:error", {
+          jobId: data.jobId,
+          error: "Failed to relay QR print job",
+        });
+      }
+    },
+  );
+
+  socket.on(
     "print:job:result",
     (result: {
       jobId: string;

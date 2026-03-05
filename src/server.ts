@@ -7,6 +7,7 @@ import { connectDatabase } from "./config/database";
 import { handleSocketEvents, setSocketIOInstance } from "./events/socketEvents";
 import { setMessagingDb } from "./lib/messaging.socket";
 import mongoose from "mongoose";
+import { Order } from "./models/Order";
 import {
   emitSalesUpdated,
   emitCashUpdated,
@@ -34,10 +35,14 @@ const getOrigins = () => {
     "https://rendezvous-cafe.vercel.app",
     "http://localhost:8000",
     "http://localhost:8001",
-    "http://192.168.1.56:8080",
-    "http://192.168.1.56:8081",
-    "http://192.168.1.56:3000",
-    "http://192.168.1.56:3001",
+    "http://192.168.1.18:8080",
+    "http://192.168.1.18:8081",
+    "http://192.168.1.18:3000",
+    "http://192.168.1.18:3001",
+    "http://192.168.1.15:8080",
+    "http://192.168.1.15:8081",
+    "http://192.168.1.15:3000",
+    "http://192.168.1.15:3001",
   ];
 
   return Array.from(new Set([...envOrigins, ...defaultOrigins]));
@@ -118,6 +123,85 @@ app.post("/internal/register-closed", (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to emit" });
+  }
+});
+
+// ─── Payment Confirmed (called by PayMongo webhook via customer portal) ───────
+app.post("/internal/payment-confirmed", async (req, res) => {
+  try {
+    const secret = req.headers["x-internal-secret"];
+    if (process.env.INTERNAL_SECRET && secret !== process.env.INTERNAL_SECRET) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { orderId, paymentReference } = req.body;
+    if (!orderId || !paymentReference) {
+      return res
+        .status(400)
+        .json({ error: "orderId and paymentReference are required" });
+    }
+
+    const order = await Order.findOneAndUpdate(
+      { orderId },
+      {
+        $set: {
+          paymentStatus: "paid",
+          paymentReference,
+          queueStatus: "queueing",
+          paidAt: new Date(),
+          queueingAt: new Date(),
+        },
+      },
+      { new: true },
+    );
+
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    // Set table to occupied
+    if (order.tableId) {
+      try {
+        const db = mongoose.connection.db;
+        if (db) {
+          await db
+            .collection("tables")
+            .findOneAndUpdate(
+              { tableId: order.tableId },
+              { $set: { status: "occupied", updatedAt: new Date() } },
+            );
+        }
+      } catch (tableErr) {
+        console.warn(
+          "[payment-confirmed] Failed to update table status:",
+          tableErr,
+        );
+      }
+    }
+
+    // Notify POS — order now appears in the active queue
+    io.to("pos:cashiers").emit("order:queue:updated", {
+      orderId,
+      queueStatus: "queueing",
+      order: order.toObject(),
+    });
+
+    // Notify customer socket room — trigger redirect to /order/waiting
+    if (order.sessionId) {
+      io.to(`session:${order.sessionId}`).emit("order:payment:success", {
+        orderId,
+        orderNumber: order.orderNumber,
+        queueStatus: "queueing",
+      });
+    }
+
+    console.log(
+      `✅ [payment-confirmed] ${orderId} → queueing (ref: ${paymentReference})`,
+    );
+    res.json({ success: true, orderId, queueStatus: "queueing" });
+  } catch (error) {
+    console.error("❌ [payment-confirmed] Error:", error);
+    res.status(500).json({ error: "Failed to confirm payment" });
   }
 });
 
