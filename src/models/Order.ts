@@ -62,7 +62,14 @@ const orderSchema = new mongoose.Schema(
     // Queue
     queueStatus: {
       type: String,
-      enum: ["pending_payment", "queueing", "serving", "done", "cancelled"],
+      enum: [
+        "pending_payment",
+        "queueing",
+        "preparing",
+        "serving",
+        "done",
+        "cancelled",
+      ],
       default: "pending_payment",
     },
 

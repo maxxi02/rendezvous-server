@@ -3,6 +3,8 @@
 import { Server, Socket } from "socket.io";
 import { Table } from "../models/Table";
 import { TableSession } from "../models/TableSession";
+import { ChatMessage } from "../models/ChatMessage";
+import { Order } from "../models/Order";
 import type {
   TableCreatePayload,
   TableUpdatePayload,
@@ -74,6 +76,22 @@ export function registerTableHandlers(io: Server, socket: Socket): void {
       if (!table) {
         socket.emit("table:update:error", { message: "Table not found" });
         return;
+      }
+
+      // If status is changed to available, cleanup session data
+      if (data.status === "available" && table.currentSessionId) {
+        try {
+          const sessionId = table.currentSessionId;
+          await ChatMessage.deleteMany({
+            $or: [{ sessionId }, { sessionId: `table:${data.tableId}` }],
+          });
+          await Order.deleteMany({ sessionId });
+          log.success(
+            `Cleanup completed for table ${data.tableId} (explicit available transition)`,
+          );
+        } catch (cleanupErr) {
+          log.error("Failed cleanup during table update", cleanupErr);
+        }
       }
 
       io.to("pos:cashiers").emit("table:updated", table.toObject());
@@ -216,6 +234,31 @@ export function registerTableHandlers(io: Server, socket: Socket): void {
           status: "available",
           currentSessionId: null,
         });
+
+        // Cleanup chat and orders
+        try {
+          await ChatMessage.deleteMany({
+            $or: [
+              { sessionId: data.sessionId },
+              { sessionId: `table:${session.tableId}` },
+            ],
+          });
+          await Order.deleteMany({ sessionId: data.sessionId });
+          log.success(`Cleanup completed for session ${data.sessionId}`);
+        } catch (cleanupErr) {
+          log.error("Failed cleanup during session end", cleanupErr);
+        }
+      } else {
+        // Walk-in/Anonymous cleanup
+        try {
+          await ChatMessage.deleteMany({ sessionId: data.sessionId });
+          await Order.deleteMany({ sessionId: data.sessionId });
+          log.success(
+            `Cleanup completed for non-table session ${data.sessionId}`,
+          );
+        } catch (cleanupErr) {
+          log.error("Failed cleanup during non-table session end", cleanupErr);
+        }
       }
 
       // Notify session room

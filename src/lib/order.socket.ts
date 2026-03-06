@@ -19,6 +19,7 @@ const log = {
 const statusTimestampMap: Record<string, string> = {
   paid: "paidAt",
   queueing: "queueingAt",
+  preparing: "preparingAt",
   serving: "servingAt",
   done: "doneAt",
   cancelled: "cancelledAt",
