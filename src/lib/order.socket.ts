@@ -18,11 +18,9 @@ const log = {
 // Timestamp field mapping for each queue status
 const statusTimestampMap: Record<string, string> = {
   paid: "paidAt",
-  preparing: "preparingAt",
+  queueing: "queueingAt",
   serving: "servingAt",
-  ready: "readyAt",
-  served: "servedAt",
-  completed: "completedAt",
+  done: "doneAt",
   cancelled: "cancelledAt",
 };
 
@@ -189,8 +187,9 @@ export function registerOrderHandlers(io: Server, socket: Socket): void {
             $set: {
               paymentStatus: "paid",
               paymentReference: data.paymentReference,
-              queueStatus: "paid",
+              queueStatus: "queueing",
               paidAt: new Date(),
+              queueingAt: new Date(),
             },
           },
           { new: true },
@@ -206,17 +205,17 @@ export function registerOrderHandlers(io: Server, socket: Socket): void {
         // Notify POS
         io.to("pos:cashiers").emit("order:queue:updated", {
           orderId: data.orderId,
-          queueStatus: "paid",
+          queueStatus: "queueing",
           order: order.toObject(),
         });
 
         // Notify customer
         if (order.sessionId) {
           const sessionRoom = `session:${order.sessionId}`;
-          io.to(sessionRoom).emit("order:payment:success", {
+          io.to(sessionRoom).emit("order:status:changed", {
             orderId: data.orderId,
             orderNumber: order.orderNumber,
-            queueStatus: "paid",
+            queueStatus: "queueing",
           });
         }
 
@@ -233,13 +232,7 @@ export function registerOrderHandlers(io: Server, socket: Socket): void {
   // ─── Fetch queue orders (for POS board) ─────────────────────────
   socket.on("order:queue:list", async (data?: { statuses?: QueueStatus[] }) => {
     try {
-      const statuses = data?.statuses || [
-        "paid",
-        "preparing",
-        "serving",
-        "ready",
-        "served",
-      ];
+      const statuses = data?.statuses || ["queueing", "serving", "done"];
 
       const orders = await Order.find({
         queueStatus: { $in: statuses },

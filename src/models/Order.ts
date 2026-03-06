@@ -27,8 +27,8 @@ const orderSchema = new mongoose.Schema(
   {
     orderId: { type: String, required: true, unique: true },
     orderNumber: { type: String }, // auto-increment per day e.g. "#001"
-    sessionId: { type: String, default: null },
-    tableId: { type: String, default: null },
+    sessionId: { type: String, default: null, index: true },
+    tableId: { type: String, default: null, index: true },
     qrType: {
       type: String,
       enum: ["dine-in", "walk-in", "drive-thru"],
@@ -62,20 +62,14 @@ const orderSchema = new mongoose.Schema(
     // Queue
     queueStatus: {
       type: String,
-      enum: [
-        "pending_payment",
-        "paid",
-        "preparing",
-        "ready",
-        "served",
-        "completed",
-        "cancelled",
-      ],
+      enum: ["pending_payment", "queueing", "serving", "done", "cancelled"],
       default: "pending_payment",
     },
 
     // Timestamps
     paidAt: Date,
+    queueingAt: Date,
+    servingAt: Date,
     preparingAt: Date,
     readyAt: Date,
     servedAt: Date,
@@ -90,9 +84,6 @@ const orderSchema = new mongoose.Schema(
 
 // Indexes for queue queries
 orderSchema.index({ queueStatus: 1, createdAt: -1 });
-orderSchema.index({ sessionId: 1 });
-orderSchema.index({ orderId: 1 });
-orderSchema.index({ tableId: 1 });
 
 export const Order =
   mongoose.models.Order || mongoose.model("Order", orderSchema);

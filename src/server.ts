@@ -1,3 +1,6 @@
+import dns from "node:dns";
+dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
+
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
@@ -12,6 +15,7 @@ import {
   emitCashUpdated,
   emitRegisterClosed,
 } from "./events/socketEvents";
+import { Order } from "./models/Order";
 
 dotenv.config();
 
@@ -30,17 +34,25 @@ const getOrigins = () => {
   const defaultOrigins = [
     "http://localhost:3000",
     "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
     "https://rendezvouscafe.vercel.app",
     "https://rendezvous-cafe.vercel.app",
     "http://localhost:8000",
     "http://localhost:8001",
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:8001",
     "http://192.168.1.56:8080",
     "http://192.168.1.56:8081",
     "http://192.168.1.56:3000",
     "http://192.168.1.56:3001",
   ];
 
-  return Array.from(new Set([...envOrigins, ...defaultOrigins]));
+  const origins = Array.from(new Set([...envOrigins, ...defaultOrigins]));
+  console.log(
+    `[CORS] Final allowed origins list initialized with ${origins.length} entries`,
+  );
+  return origins;
 };
 
 const allowedOrigins = getOrigins();
@@ -55,7 +67,8 @@ const app = express();
 const httpServer = createServer(app);
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 app.post("/internal/sales-updated", (req, res) => {
   try {
@@ -118,6 +131,96 @@ app.post("/internal/register-closed", (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to emit" });
+  }
+});
+
+app.post("/internal/order-create", async (req, res) => {
+  try {
+    const secret = req.headers["x-internal-secret"];
+    if (process.env.INTERNAL_SECRET && secret !== process.env.INTERNAL_SECRET) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const orderData = req.body;
+    if (!orderData?.orderId) {
+      return res.status(400).json({ error: "orderId is required" });
+    }
+
+    // Check if order already exists to prevent duplicates
+    const existingOrder = await Order.findOne({ orderId: orderData.orderId });
+    if (existingOrder) {
+      return res.json(existingOrder);
+    }
+
+    const order = await Order.create(orderData);
+    console.log(`✅ Order created successfully: ${order.orderId}`);
+    res.json(order);
+  } catch (error: any) {
+    console.error("❌ Error creating order:", error);
+    res.status(500).json({ error: error.message || "Failed to create order" });
+  }
+});
+
+app.post("/internal/payment-confirmed", async (req, res) => {
+  try {
+    const secret = req.headers["x-internal-secret"];
+    if (process.env.INTERNAL_SECRET && secret !== process.env.INTERNAL_SECRET) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { orderId, paymentReference } = req.body;
+    if (!orderId) {
+      return res.status(400).json({ error: "orderId is required" });
+    }
+
+    const order = await Order.findOneAndUpdate(
+      { orderId },
+      {
+        $set: {
+          paymentStatus: "paid",
+          queueStatus: "queueing",
+          paymentReference: paymentReference || null,
+          paidAt: new Date(),
+          queueingAt: new Date(),
+        },
+      },
+      { new: true },
+    );
+
+    if (!order) {
+      console.warn(
+        `[payment-confirmed] Order not found for orderId: ${orderId}`,
+      );
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    console.log(`✅ Payment confirmed for order: ${orderId}`);
+
+    // Notify the customer's session room
+    if (order.sessionId) {
+      io.to(`session:${order.sessionId}`).emit("order:status:changed", {
+        orderId: order.orderId,
+        orderNumber: order.orderNumber,
+        queueStatus: order.queueStatus,
+        paymentStatus: order.paymentStatus,
+      });
+    }
+
+    // Broadcast to all staff POS clients so QueueBoard adds the order in real-time.
+    // Shape must match what QueueBoard's handleQueueUpdate expects:
+    // { orderId, queueStatus, order }
+    io.emit("order:queue:updated", {
+      orderId: order.orderId,
+      queueStatus: order.queueStatus,
+      order,
+    });
+
+    res.json({ success: true, order });
+  } catch (error: any) {
+    console.error("❌ Error confirming payment:", error);
+    res
+      .status(500)
+      .json({ error: error.message || "Failed to confirm payment" });
   }
 });
 
