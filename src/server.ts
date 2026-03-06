@@ -10,14 +10,23 @@ import { connectDatabase } from "./config/database";
 import { handleSocketEvents, setSocketIOInstance } from "./events/socketEvents";
 import { setMessagingDb } from "./lib/messaging.socket";
 import mongoose from "mongoose";
+import { Order } from "./models/Order";
 import {
   emitSalesUpdated,
   emitCashUpdated,
   emitRegisterClosed,
 } from "./events/socketEvents";
-import { Order } from "./models/Order";
 
 dotenv.config();
+
+// ─── Shared order number generator (same logic as order.socket.ts) ────────────
+// Used by the synchronous /internal/order-create HTTP endpoint
+const generateOrderNumber = async (): Promise<string> => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const count = await Order.countDocuments({ createdAt: { $gte: today } });
+  return `#${String(count + 1).padStart(3, "0")}`;
+};
 
 const PORT = process.env.PORT || 8080;
 
