@@ -81,8 +81,6 @@ const orderSchema = new mongoose.Schema(
 
 // Indexes for queue queries
 orderSchema.index({ queueStatus: 1, createdAt: -1 });
-orderSchema.index({ sessionId: 1 });
-orderSchema.index({ orderId: 1 });
 orderSchema.index({ tableId: 1 });
 
 export const Order =

@@ -89,17 +89,17 @@ export function registerOrderHandlers(io: Server, socket: Socket): void {
         }
       }
 
-      const orderObj = savedOrder.toObject();
+      const savedOrderObj = savedOrder.toObject();
 
-      // Emit order:new (legacy - for toast notifications)
-      io.to("pos:cashiers").emit("order:new", orderObj);
-
-      // ALSO emit order:queue:updated so QueueBoard adds it directly
+      // Emit order:queue:updated so QueueBoard has the record (but filters it out)
       io.to("pos:cashiers").emit("order:queue:updated", {
-        orderId: orderObj.orderId,
+        orderId: savedOrderObj.orderId,
         queueStatus: "pending_payment",
-        order: orderObj,
+        order: savedOrderObj,
       });
+
+      // Removed io.to("pos:cashiers").emit("order:new", savedOrderObj);
+      // Preventing premature toast for pending orders.
 
       // Confirm to customer — they are now redirected to the GCash payment page
       const sessionRoom = `session:${order.sessionId}`;

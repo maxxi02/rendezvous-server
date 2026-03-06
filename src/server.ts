@@ -16,6 +16,15 @@ import {
 
 dotenv.config();
 
+// ─── Shared order number generator (same logic as order.socket.ts) ────────────
+// Used by the synchronous /internal/order-create HTTP endpoint
+const generateOrderNumber = async (): Promise<string> => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const count = await Order.countDocuments({ createdAt: { $gte: today } });
+  return `#${String(count + 1).padStart(3, "0")}`;
+};
+
 const PORT = process.env.PORT || 8080;
 
 const getOrigins = () => {
@@ -60,7 +69,8 @@ const app = express();
 const httpServer = createServer(app);
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 app.post("/internal/sales-updated", (req, res) => {
   try {
@@ -126,6 +136,88 @@ app.post("/internal/register-closed", (req, res) => {
   }
 });
 
+// ─── Order Create (called by customer portal before PayMongo payment) ────────
+// This is HTTP-based (not socket) so the order is guaranteed to be in MongoDB
+// before the PayMongo source is created, eliminating the webhook race condition.
+app.post("/internal/order-create", async (req, res) => {
+  try {
+    const secret = req.headers["x-internal-secret"];
+    if (process.env.INTERNAL_SECRET && secret !== process.env.INTERNAL_SECRET) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const order = req.body;
+    if (!order?.orderId || !order?.customerName) {
+      return res
+        .status(400)
+        .json({ error: "orderId and customerName are required" });
+    }
+
+    const orderNumber = await generateOrderNumber();
+
+    const savedOrder = await Order.create({
+      ...order,
+      orderNumber,
+      queueStatus: "pending_payment",
+      paymentStatus: "pending",
+      createdAt: new Date(),
+    });
+
+    // Update table status if applicable
+    if (order.tableNumber || order.tableId) {
+      try {
+        const db = mongoose.connection.db;
+        if (db) {
+          const tableQuery = order.tableId
+            ? { tableId: order.tableId }
+            : { tableId: order.tableNumber };
+          await db.collection("tables").findOneAndUpdate(tableQuery, {
+            $set: {
+              status: "occupied",
+              currentSessionId: order.sessionId || null,
+              updatedAt: new Date(),
+            },
+          });
+        }
+      } catch (tableErr) {
+        console.warn("[order-create] Failed to update table status:", tableErr);
+      }
+    }
+
+    const savedOrderObj = savedOrder.toObject();
+
+    // Notify POS — OR don't, if we want it to be invisible until paid.
+    // We only emit order:queue:updated so the state is technically there,
+    // but the QueueBoard will filter it out.
+    io.to("pos:cashiers").emit("order:queue:updated", {
+      orderId: savedOrderObj.orderId,
+      queueStatus: "pending_payment",
+      order: savedOrderObj,
+    });
+    // Removed io.to("pos:cashiers").emit("order:new", savedOrderObj);
+    // This prevents the confusing toast appearing before payment is done.
+
+    console.log(
+      `✅ [order-create] ${savedOrder.orderId} (${orderNumber}) saved → pending_payment`,
+    );
+    res.json({ success: true, orderId: savedOrder.orderId, orderNumber });
+  } catch (error: any) {
+    // Handle duplicate orderId (idempotent — return existing order)
+    if (error?.code === 11000) {
+      const existing = await Order.findOne({ orderId: req.body?.orderId });
+      if (existing) {
+        return res.json({
+          success: true,
+          orderId: existing.orderId,
+          orderNumber: existing.orderNumber,
+        });
+      }
+    }
+    console.error("❌ [order-create] Error:", error);
+    res.status(500).json({ error: "Failed to create order" });
+  }
+});
+
 // ─── Payment Confirmed (called by PayMongo webhook via customer portal) ───────
 app.post("/internal/payment-confirmed", async (req, res) => {
   try {
@@ -179,12 +271,13 @@ app.post("/internal/payment-confirmed", async (req, res) => {
       }
     }
 
-    // Notify POS — order now appears in the active queue
+    // Notify POS — order shows up in the queue and pops a toast
     io.to("pos:cashiers").emit("order:queue:updated", {
       orderId,
       queueStatus: "queueing",
       order: order.toObject(),
     });
+    io.to("pos:cashiers").emit("order:new", order.toObject());
 
     // Notify customer socket room — trigger redirect to /order/waiting
     if (order.sessionId) {
