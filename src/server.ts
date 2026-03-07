@@ -140,6 +140,20 @@ app.post("/internal/register-closed", (req, res) => {
   }
 });
 
+app.post("/internal/tables-updated", (req, res) => {
+  try {
+    const secret = req.headers["x-internal-secret"];
+    if (process.env.INTERNAL_SECRET && secret !== process.env.INTERNAL_SECRET) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const tableData = req.body;
+    io.emit("table:updated", tableData);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to emit" });
+  }
+});
+
 app.post("/internal/order-create", async (req, res) => {
   try {
     const secret = req.headers["x-internal-secret"];
@@ -160,6 +174,14 @@ app.post("/internal/order-create", async (req, res) => {
 
     const order = await Order.create(orderData);
     console.log(`✅ Order created successfully: ${order.orderId}`);
+
+    // Broadcast newly created order so POS gets pending table orders (dine-in) instantly
+    io.emit("order:queue:updated", {
+      orderId: order.orderId,
+      queueStatus: order.queueStatus || "pending_payment",
+      order,
+    });
+
     res.json(order);
   } catch (error: any) {
     console.error("❌ Error creating order:", error);
