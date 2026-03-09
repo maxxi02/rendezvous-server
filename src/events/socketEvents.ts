@@ -202,8 +202,34 @@ const handleConnection = (io: Server, socket: Socket) => {
     try {
       log.info(`Print request received: ${job.jobId} → ${job.target}`);
 
-      // Relay to pos:cashiers room — the cashier's browser will handle actual printing
+      // Relay to companion app for actual printing
       io.to("pos:cashiers").emit("print:job", job);
+
+      // Also broadcast as an order:queue:updated so all companions
+      // can show the order in their Orders tab immediately
+      if (job.input) {
+        const orderPayload = {
+          orderId: `pos-${job.jobId}`,
+          orderNumber: job.input.orderNumber,
+          customerName: job.input.customerName,
+          cashier: job.input.cashier,
+          items: job.input.items,
+          orderType: job.input.orderType,
+          tableNumber: job.input.tableNumber,
+          orderNote: job.input.orderNote,
+          total: job.input.total,
+          subtotal: job.input.subtotal,
+          discountTotal: job.input.discountTotal,
+          paymentMethod: job.input.paymentMethod,
+          queueStatus: "preparing",
+          createdAt: job.input.timestamp,
+        };
+        io.to("pos:cashiers").emit("order:queue:updated", {
+          orderId: orderPayload.orderId,
+          queueStatus: "preparing",
+          order: orderPayload,
+        });
+      }
 
       log.success(`Print job relayed to pos:cashiers: ${job.jobId}`);
     } catch (error) {
@@ -246,8 +272,8 @@ const handleConnection = (io: Server, socket: Socket) => {
     }) => {
       log.info(`Print job result: ${result.jobId}`, result);
 
-      // Optionally log to DB here
-      // You could save print logs to MongoDB if needed
+      // Relay result back to POS cashiers so printBoth() Promise can resolve
+      io.to("pos:cashiers").emit("print:job:result", result);
     },
   );
 
