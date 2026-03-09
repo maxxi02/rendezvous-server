@@ -256,17 +256,7 @@ app.post("/internal/payment-confirmed", async (req, res) => {
 
 const io = new Server(httpServer, {
   cors: {
-    origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, curl, server-to-server)
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        console.warn(`[CORS] Blocked origin: ${origin}`);
-        callback(new Error(`Origin ${origin} not allowed`));
-      }
-    },
+    origin: "*",
     methods: ["GET", "POST"],
     credentials: true,
   },
