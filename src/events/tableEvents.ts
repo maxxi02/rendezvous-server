@@ -3,7 +3,6 @@
 import { Server, Socket } from "socket.io";
 import { Table } from "../models/Table";
 import { TableSession } from "../models/TableSession";
-import { ChatMessage } from "../models/ChatMessage";
 import { Order } from "../models/Order";
 import type {
   TableCreatePayload,
@@ -82,9 +81,6 @@ export function registerTableHandlers(io: Server, socket: Socket): void {
       if (data.status === "available" && table.currentSessionId) {
         try {
           const sessionId = table.currentSessionId;
-          await ChatMessage.deleteMany({
-            $or: [{ sessionId }, { sessionId: `table:${data.tableId}` }],
-          });
           await Order.deleteMany({ sessionId });
           log.success(
             `Cleanup completed for table ${data.tableId} (explicit available transition)`,
@@ -235,14 +231,8 @@ export function registerTableHandlers(io: Server, socket: Socket): void {
           currentSessionId: null,
         });
 
-        // Cleanup chat and orders
+        // Cleanup orders
         try {
-          await ChatMessage.deleteMany({
-            $or: [
-              { sessionId: data.sessionId },
-              { sessionId: `table:${session.tableId}` },
-            ],
-          });
           await Order.deleteMany({ sessionId: data.sessionId });
           log.success(`Cleanup completed for session ${data.sessionId}`);
         } catch (cleanupErr) {
@@ -251,7 +241,6 @@ export function registerTableHandlers(io: Server, socket: Socket): void {
       } else {
         // Walk-in/Anonymous cleanup
         try {
-          await ChatMessage.deleteMany({ sessionId: data.sessionId });
           await Order.deleteMany({ sessionId: data.sessionId });
           log.success(
             `Cleanup completed for non-table session ${data.sessionId}`,

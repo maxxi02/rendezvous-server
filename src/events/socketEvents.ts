@@ -6,7 +6,7 @@ import { emitCustomerOrder, registerOrderHandlers } from "../lib/order.socket";
 import { CustomerOrder } from "../types/order.type";
 import { registerInventoryHandlers } from "./inventoryEvents";
 import { registerTableHandlers } from "./tableEvents";
-import { registerChatHandlers } from "./chatEvents";
+
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -155,7 +155,7 @@ const handleConnection = (io: Server, socket: Socket) => {
   registerMessagingHandlers(io, socket);
   registerInventoryHandlers(io, socket);
   registerTableHandlers(io, socket);
-  registerChatHandlers(io, socket);
+
   registerOrderHandlers(io, socket);
 
   log.success("Client connected", {
