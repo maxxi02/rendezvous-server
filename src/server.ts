@@ -115,6 +115,28 @@ app.post("/internal/order-status-changed", (req, res) => {
   }
 });
 
+app.post("/internal/queue-updated", (req, res) => {
+  try {
+    const secret = req.headers["x-internal-secret"];
+    if (process.env.INTERNAL_SECRET && secret !== process.env.INTERNAL_SECRET) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const { orderId, queueStatus, order } = req.body;
+
+    // Broadcast to all staff POS clients so QueueBoard updates in real-time
+    io.emit("order:queue:updated", {
+      orderId,
+      queueStatus,
+      order,
+    });
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error("❌ Error emitting queue update:", error);
+    res.status(500).json({ error: "Failed to emit queue update" });
+  }
+});
+
 app.post("/internal/cash-updated", (req, res) => {
   try {
     const secret = req.headers["x-internal-secret"];
