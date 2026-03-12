@@ -6,7 +6,7 @@ import { emitCustomerOrder, registerOrderHandlers } from "../lib/order.socket";
 import { CustomerOrder } from "../types/order.type";
 import { registerInventoryHandlers } from "./inventoryEvents";
 import { registerTableHandlers } from "./tableEvents";
-import { registerChatHandlers } from "./chatEvents";
+
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -34,6 +34,7 @@ interface ReceiptBuildInput {
   orderType: "dine-in" | "takeaway";
   tableNumber?: string;
   orderNote?: string;
+  sourceOrderId?: string;
   items: Array<{
     name: string;
     price: number;
@@ -154,7 +155,7 @@ const handleConnection = (io: Server, socket: Socket) => {
   registerMessagingHandlers(io, socket);
   registerInventoryHandlers(io, socket);
   registerTableHandlers(io, socket);
-  registerChatHandlers(io, socket);
+
   registerOrderHandlers(io, socket);
 
   log.success("Client connected", {
@@ -207,7 +208,8 @@ const handleConnection = (io: Server, socket: Socket) => {
 
       // Also broadcast as an order:queue:updated so all companions
       // can show the order in their Orders tab immediately
-      if (job.input) {
+      // Only append if it's a new POS checkout (no sourceOrderId)
+      if (job.input && !job.input.sourceOrderId) {
         const orderPayload = {
           orderId: `pos-${job.jobId}`,
           orderNumber: job.input.orderNumber,
