@@ -178,6 +178,21 @@ app.post("/internal/tables-updated", (req, res) => {
   }
 });
 
+app.post("/internal/shop-status", (req, res) => {
+  try {
+    const secret = req.headers["x-internal-secret"];
+    if (process.env.INTERNAL_SECRET && secret !== process.env.INTERNAL_SECRET) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const { isOpen, updatedBy } = req.body;
+    io.emit("shop:status", { isOpen, updatedBy });
+    console.log(`[shop-status] Broadcast shop:status → isOpen=${isOpen}`);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to emit shop status" });
+  }
+});
+
 app.post("/internal/order-create", async (req, res) => {
   try {
     const secret = req.headers["x-internal-secret"];
