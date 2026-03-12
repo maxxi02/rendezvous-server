@@ -359,6 +359,57 @@ const handleConnection = (io: Server, socket: Socket) => {
     log.info(`POS cashier joined room: pos:cashiers`, { socketId: socket.id });
   });
 
+  // ─── Customer: Mark Order as Done ────────────────────────────────
+
+  socket.on("order:customer:done", async ({ orderId }: { orderId: string }) => {
+    try {
+      if (!orderId) {
+        socket.emit("order:customer:done:error", { message: "orderId is required" });
+        return;
+      }
+
+      if (!mongoose.connection.db) {
+        socket.emit("order:customer:done:error", { message: "Database not connected" });
+        return;
+      }
+
+      const ordersCollection = mongoose.connection.db.collection("orders");
+
+      const updated = await ordersCollection.findOneAndUpdate(
+        { orderId, queueStatus: "serving" },
+        { $set: { queueStatus: "done", doneAt: new Date(), updatedAt: new Date() } },
+        { returnDocument: "after" },
+      );
+
+      if (!updated) {
+        // Order not found or not in serving phase — silently ignore
+        log.warn(`order:customer:done — order not found or not serving: ${orderId}`);
+        socket.emit("order:customer:done:error", { message: "Order not found or not in serving phase" });
+        return;
+      }
+
+      log.success(`Customer marked order done: ${orderId}`);
+
+      // Notify ALL POS clients so QueueBoard removes the card
+      io.emit("order:queue:updated", {
+        orderId: updated.orderId,
+        queueStatus: "done",
+        order: updated,
+      });
+
+      // Notify the customer's own session room so waiting page transitions to "done"
+      const sessionRoom = `session:${socket.id}`;
+      io.to(sessionRoom).emit("order:status:changed", {
+        orderId: updated.orderId,
+        orderNumber: updated.orderNumber,
+        queueStatus: "done",
+      });
+    } catch (error) {
+      log.error("Error in order:customer:done", error);
+      socket.emit("order:customer:done:error", { message: "Failed to mark order as done" });
+    }
+  });
+
   // User disconnects
   socket.on("disconnect", async (reason) => {
     try {
