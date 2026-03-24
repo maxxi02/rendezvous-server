@@ -130,6 +130,8 @@ const updateUserActivity = async (userId: string): Promise<void> => {
 
 const getUserRoom = (userId: string) => `user:${userId}`;
 
+let cachedPrinterStatus = { usb: false, bt: false };
+
 // ─── Event Handlers ──────────────────────────────────────────────
 
 const handleConnection = (io: Server, socket: Socket) => {
@@ -193,6 +195,7 @@ const handleConnection = (io: Server, socket: Socket) => {
   socket.on(
     "companion:printer:status",
     (status: { usb: boolean; bt: boolean }) => {
+      cachedPrinterStatus = status;
       // Relay to all POS cashier tabs so the status bar updates immediately
       io.to("pos:cashiers").emit("companion:printer:status", status);
       log.info("Printer status relayed to pos:cashiers", status);
@@ -258,6 +261,27 @@ const handleConnection = (io: Server, socket: Socket) => {
         socket.emit("print:error", {
           jobId: data.jobId,
           error: "Failed to relay QR print job",
+        });
+      }
+    },
+  );
+
+  socket.on(
+    "print:zreport",
+    (data: any) => {
+      try {
+        const jobId = data.jobId || `zreport-${Date.now()}`;
+        log.info(`Z-Report print request received: ${jobId}`);
+
+        // Relay to pos:cashiers room where the companion app is joined
+        io.to("pos:cashiers").emit("print:zreport", { data, jobId });
+
+        log.success(`Z-Report print request relayed to pos:cashiers: ${jobId}`);
+      } catch (error) {
+        log.error("Error in print:zreport", error);
+        socket.emit("print:error", {
+          jobId: data?.jobId || "unknown",
+          error: "Failed to relay Z-Report print job",
         });
       }
     },
@@ -358,7 +382,8 @@ const handleConnection = (io: Server, socket: Socket) => {
 
   socket.on("pos:join", () => {
     socket.join("pos:cashiers");
-    log.info(`POS cashier joined room: pos:cashiers`, { socketId: socket.id });
+    socket.emit("companion:printer:status", cachedPrinterStatus);
+    log.info(`POS cashier joined room: pos:cashiers`, { socketId: socket.id, sentCachedStatus: cachedPrinterStatus });
   });
 
   // ─── Customer: Mark Order as Done ────────────────────────────────
