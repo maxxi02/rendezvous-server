@@ -270,11 +270,14 @@ const handleConnection = (io: Server, socket: Socket) => {
     "print:zreport",
     (data: any) => {
       try {
+        // POS sends: { jobId: "...", data: { businessName, totalSales, ... } }
+        // We must forward the inner `data` payload, not the whole wrapper.
         const jobId = data.jobId || `zreport-${Date.now()}`;
+        const reportData = data.data ?? data; // graceful fallback if already flat
         log.info(`Z-Report print request received: ${jobId}`);
 
         // Relay to pos:cashiers room where the companion app is joined
-        io.to("pos:cashiers").emit("print:zreport", { data, jobId });
+        io.to("pos:cashiers").emit("print:zreport", { data: reportData, jobId });
 
         log.success(`Z-Report print request relayed to pos:cashiers: ${jobId}`);
       } catch (error) {
