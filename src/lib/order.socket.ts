@@ -25,16 +25,16 @@ const statusTimestampMap: Record<string, string> = {
   cancelled: "cancelledAt",
 };
 
-// Generate order number for the day (e.g. "#001")
-const generateOrderNumber = async (): Promise<string> => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const count = await Order.countDocuments({
-    createdAt: { $gte: today },
-  });
-
-  return `#${String(count + 1).padStart(3, "0")}`;
+// Generate order number matching kiosk format: ORD-YYMMDD-XXX
+const generateOrderNumber = (): string => {
+  const d = new Date();
+  return `ORD-${d.getFullYear().toString().slice(-2)}${(d.getMonth() + 1)
+    .toString()
+    .padStart(2, "0")}${d.getDate().toString().padStart(2, "0")}-${Math.floor(
+    Math.random() * 1000,
+  )
+    .toString()
+    .padStart(3, "0")}`;
 };
 
 // Emit a customer order to POS cashiers (existing behavior preserved)
@@ -60,7 +60,21 @@ export function registerOrderHandlers(io: Server, socket: Socket): void {
   // ─── Submit an order (from customer portal) ─────────────────────
   socket.on("order:submit", async (order: CustomerOrder) => {
     try {
-      const orderNumber = await generateOrderNumber();
+      // If the order was already created via /internal/order-create (HTTP path),
+      // skip creation to avoid duplicates — just confirm back to the customer.
+      const existingOrder = await Order.findOne({ orderId: order.orderId });
+      if (existingOrder) {
+        const sessionRoom = `session:${order.sessionId}`;
+        io.to(sessionRoom).emit("order:submitted", {
+          orderId: existingOrder.orderId,
+          orderNumber: existingOrder.orderNumber,
+          queueStatus: existingOrder.queueStatus,
+        });
+        log.info(`order:submit — order already exists, skipping create: ${order.orderId}`);
+        return;
+      }
+
+      const orderNumber = generateOrderNumber();
 
       const savedOrder = await Order.create({
         ...order,

@@ -18,13 +18,16 @@ import {
 
 dotenv.config();
 
-// ─── Shared order number generator (same logic as order.socket.ts) ────────────
-// Used by the synchronous /internal/order-create HTTP endpoint
-const generateOrderNumber = async (): Promise<string> => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const count = await Order.countDocuments({ createdAt: { $gte: today } });
-  return `#${String(count + 1).padStart(3, "0")}`;
+// Generate order number matching kiosk format: ORD-YYMMDD-XXX
+const generateOrderNumber = (): string => {
+  const d = new Date();
+  return `ORD-${d.getFullYear().toString().slice(-2)}${(d.getMonth() + 1)
+    .toString()
+    .padStart(2, "0")}${d.getDate().toString().padStart(2, "0")}-${Math.floor(
+    Math.random() * 1000,
+  )
+    .toString()
+    .padStart(3, "0")}`;
 };
 
 const PORT = process.env.PORT || 8080;
@@ -213,7 +216,7 @@ app.post("/internal/order-create", async (req, res) => {
 
     // Generate orderNumber if not provided by the client
     if (!orderData.orderNumber) {
-      orderData.orderNumber = await generateOrderNumber();
+      orderData.orderNumber = generateOrderNumber();
     }
 
     const order = await Order.create(orderData);
