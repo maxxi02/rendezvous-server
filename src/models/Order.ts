@@ -49,7 +49,7 @@ const orderSchema = new mongoose.Schema(
     // Payment
     paymentMethod: {
       type: String,
-      enum: ["gcash"],
+      enum: ["gcash", "split"],
       default: "gcash",
     },
     paymentStatus: {
@@ -58,6 +58,10 @@ const orderSchema = new mongoose.Schema(
       default: "pending",
     },
     paymentReference: String,
+    splitPayment: {
+      cash: { type: Number },
+      gcash: { type: Number },
+    },
 
     // Queue
     queueStatus: {
