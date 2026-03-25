@@ -248,6 +248,16 @@ app.post("/internal/payment-confirmed", async (req, res) => {
       return res.status(400).json({ error: "orderId is required" });
     }
 
+    // Idempotency guard — if already queueing/preparing/serving/done, skip
+    const alreadyProcessed = await Order.findOne({
+      orderId,
+      queueStatus: { $in: ["queueing", "preparing", "serving", "done"] },
+    });
+    if (alreadyProcessed) {
+      console.log(`[payment-confirmed] Already processed, skipping: ${orderId}`);
+      return res.json({ success: true, order: alreadyProcessed, skipped: true });
+    }
+
     const order = await Order.findOneAndUpdate(
       { orderId },
       {
@@ -282,13 +292,14 @@ app.post("/internal/payment-confirmed", async (req, res) => {
     }
 
     // Broadcast to all staff POS clients so QueueBoard adds the order in real-time.
-    // Shape must match what QueueBoard's handleQueueUpdate expects:
-    // { orderId, queueStatus, order }
     io.emit("order:queue:updated", {
       orderId: order.orderId,
       queueStatus: order.queueStatus,
       order,
     });
+
+    // Trigger kitchen + receipt print via companion app
+    io.to("pos:cashiers").emit("order:new", order);
 
     res.json({ success: true, order });
   } catch (error: any) {
