@@ -211,8 +211,13 @@ app.post("/internal/order-create", async (req, res) => {
       return res.json(existingOrder);
     }
 
+    // Generate orderNumber if not provided by the client
+    if (!orderData.orderNumber) {
+      orderData.orderNumber = await generateOrderNumber();
+    }
+
     const order = await Order.create(orderData);
-    console.log(`✅ Order created successfully: ${order.orderId}`);
+    console.log(`✅ Order created successfully: ${order.orderId} (${order.orderNumber})`);
 
     // Broadcast newly created order so POS gets pending table orders (dine-in) instantly
     io.emit("order:queue:updated", {
