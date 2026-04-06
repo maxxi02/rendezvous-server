@@ -210,32 +210,9 @@ const handleConnection = (io: Server, socket: Socket) => {
       // Relay to companion app for actual printing
       io.to("pos:cashiers").emit("print:job", job);
 
-      // Also broadcast as an order:queue:updated so all companions
-      // can show the order in their Orders tab immediately
-      // Only append if it's a new POS checkout (no sourceOrderId)
-      if (job.input && !job.input.sourceOrderId) {
-        const orderPayload = {
-          orderId: `pos-${job.jobId}`,
-          orderNumber: job.input.orderNumber,
-          customerName: job.input.customerName,
-          cashier: job.input.cashier,
-          items: job.input.items,
-          orderType: job.input.orderType,
-          tableNumber: job.input.tableNumber,
-          orderNote: job.input.orderNote,
-          total: job.input.total,
-          subtotal: job.input.subtotal,
-          discountTotal: job.input.discountTotal,
-          paymentMethod: job.input.paymentMethod,
-          queueStatus: "preparing",
-          createdAt: job.input.timestamp,
-        };
-        io.to("pos:cashiers").emit("order:queue:updated", {
-          orderId: orderPayload.orderId,
-          queueStatus: "preparing",
-          order: orderPayload,
-        });
-      }
+      // NOTE: POS walk-in orders (print:request) are NOT added to the queue board.
+      // The queue board is exclusively for customer portal/kiosk orders that go
+      // through the full order flow (order:submit → order:payment:confirmed).
 
       log.success(`Print job relayed to pos:cashiers: ${job.jobId}`);
     } catch (error) {
