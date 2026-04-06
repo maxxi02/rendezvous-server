@@ -219,6 +219,18 @@ app.post("/internal/order-create", async (req, res) => {
       orderData.orderNumber = generateOrderNumber();
     }
 
+    // Cash/split orders are immediately confirmed — skip pending_payment
+    const isCash = orderData.paymentMethod === "cash" || orderData.paymentMethod === "split";
+    if (isCash && !orderData.queueStatus) {
+      orderData.queueStatus = "queueing";
+      orderData.paymentStatus = "paid";
+      orderData.paidAt = new Date();
+      orderData.queueingAt = new Date();
+    } else if (!orderData.queueStatus) {
+      orderData.queueStatus = "pending_payment";
+      orderData.paymentStatus = "pending";
+    }
+
     const order = await Order.create(orderData);
     console.log(`✅ Order created successfully: ${order.orderId} (${order.orderNumber})`);
 

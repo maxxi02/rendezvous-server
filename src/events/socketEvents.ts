@@ -132,6 +132,9 @@ const updateUserActivity = async (userId: string): Promise<void> => {
 const getUserRoom = (userId: string) => `user:${userId}`;
 
 let cachedPrinterStatus = { usb: false, bt: false };
+// Per-socket throttle: track last relay timestamp to enforce 5s minimum interval
+const printerStatusLastEmit = new Map<string, number>();
+const PRINTER_STATUS_THROTTLE_MS = 5000;
 
 // ─── Event Handlers ──────────────────────────────────────────────
 
@@ -196,8 +199,12 @@ const handleConnection = (io: Server, socket: Socket) => {
   socket.on(
     "companion:printer:status",
     (status: { usb: boolean; bt: boolean }) => {
+      const now = Date.now();
+      const last = printerStatusLastEmit.get(socket.id) ?? 0;
+      if (now - last < PRINTER_STATUS_THROTTLE_MS) return; // drop — too soon
+      printerStatusLastEmit.set(socket.id, now);
+
       cachedPrinterStatus = status;
-      // Relay to all POS cashier tabs so the status bar updates immediately
       io.to("pos:cashiers").emit("companion:printer:status", status);
       log.info("Printer status relayed to pos:cashiers", status);
     },
@@ -421,6 +428,7 @@ const handleConnection = (io: Server, socket: Socket) => {
   // User disconnects
   socket.on("disconnect", async (reason) => {
     try {
+      printerStatusLastEmit.delete(socket.id);
       if (userId) await setUserOffline(userId);
 
       const update: UserStatusUpdate = {

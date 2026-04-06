@@ -5,11 +5,13 @@ import { QrType } from "./table.type";
 export type QueueStatus =
   | "pending_payment"
   | "paid"
+  | "queueing"
   | "preparing"
   | "serving"
   | "ready"
   | "served"
   | "completed"
+  | "done"
   | "cancelled";
 
 export type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
@@ -43,9 +45,10 @@ export interface CustomerOrder {
   timestamp: Date;
 
   // Payment
-  paymentMethod?: "gcash";
+  paymentMethod?: "gcash" | "cash" | "split";
   paymentStatus?: PaymentStatus;
-  paymentReference?: string; // GCash/PayMongo reference
+  paymentReference?: string;
+  splitPayment?: { cash: number; gcash: number };
 
   // Queue
   queueStatus?: QueueStatus;
