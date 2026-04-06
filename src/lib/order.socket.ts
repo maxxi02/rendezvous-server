@@ -76,11 +76,17 @@ export function registerOrderHandlers(io: Server, socket: Socket): void {
 
       const orderNumber = generateOrderNumber();
 
+      // Cash orders are immediately confirmed — no payment gateway needed
+      const isCashOrder = order.paymentMethod === "cash" || order.paymentMethod === "split";
+      const initialQueueStatus = isCashOrder ? "queueing" : "pending_payment";
+      const initialPaymentStatus = isCashOrder ? "paid" : "pending";
+
       const savedOrder = await Order.create({
         ...order,
         orderNumber,
-        queueStatus: "pending_payment",
-        paymentStatus: "pending",
+        queueStatus: initialQueueStatus,
+        paymentStatus: initialPaymentStatus,
+        ...(isCashOrder ? { paidAt: new Date(), queueingAt: new Date() } : {}),
         createdAt: new Date(),
       });
 
