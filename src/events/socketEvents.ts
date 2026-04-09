@@ -210,6 +210,17 @@ const handleConnection = (io: Server, socket: Socket) => {
     },
   );
 
+  // Forced status update — bypasses throttle, used when companion responds to a ping
+  socket.on(
+    "companion:printer:status:forced",
+    (status: { usb: boolean; bt: boolean }) => {
+      printerStatusLastEmit.set(socket.id, Date.now()); // reset throttle window
+      cachedPrinterStatus = status;
+      io.to("pos:cashiers").emit("companion:printer:status", status);
+      log.info("Printer status (forced) relayed to pos:cashiers", status);
+    },
+  );
+
   socket.on("print:request", (job: PrintJob) => {
     try {
       log.info(`Print request received: ${job.jobId} → ${job.target}`);
