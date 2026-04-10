@@ -221,6 +221,15 @@ const handleConnection = (io: Server, socket: Socket) => {
     },
   );
 
+
+  // POS requests the companion to disconnect a specific printer
+  socket.on(
+    "companion:printer:disconnect",
+    (payload: { target: "usb" | "bt" }) => {
+      io.to("pos:cashiers").emit("companion:printer:disconnect", payload);
+      log.info(`Printer disconnect relayed to companion: ${payload.target}`);
+    },
+  );
   socket.on("print:request", (job: PrintJob) => {
     try {
       log.info(`Print request received: ${job.jobId} → ${job.target}`);
