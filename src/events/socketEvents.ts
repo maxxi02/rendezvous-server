@@ -429,6 +429,14 @@ const handleConnection = (io: Server, socket: Socket) => {
   socket.on("disconnect", async (reason) => {
     try {
       printerStatusLastEmit.delete(socket.id);
+
+      // If the companion app disconnects, notify POS that printers are offline
+      if (socket.rooms.has("pos:cashiers")) {
+        cachedPrinterStatus = { usb: false, bt: false };
+        io.to("pos:cashiers").emit("companion:printer:status", cachedPrinterStatus);
+        log.info("Companion disconnected — printer status reset to offline");
+      }
+
       if (userId) await setUserOffline(userId);
 
       const update: UserStatusUpdate = {
